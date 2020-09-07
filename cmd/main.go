@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kubernetesscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/klogr"
-	_ "sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	_ "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -19,8 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/safanaj/k8s-generic-validator/pkg/reconcilers"
-	_ "github.com/safanaj/k8s-generic-validator/pkg/utils/configuration"
-	_ "github.com/safanaj/k8s-generic-validator/pkg/utils/predicates"
+	"github.com/safanaj/k8s-generic-validator/pkg/utils/configuration"
+	"github.com/safanaj/k8s-generic-validator/pkg/utils/predicates"
 	utilstls "github.com/safanaj/k8s-generic-validator/pkg/utils/tls"
 	utilswebhook "github.com/safanaj/k8s-generic-validator/pkg/utils/webhook"
 	"github.com/safanaj/k8s-generic-validator/pkg/webhooks"
@@ -47,6 +47,14 @@ func main() {
 		os.Exit(0)
 	}
 
+	// setup configuration
+	cfg := config.NewConfig()
+	var cmNamed types.NamespacedName
+	{
+		cmParts := strings.Split(flags.configMap, "/")
+		cmNamed = types.NamespacedName{cmParts[0], cmParts[1]}
+	}
+
 	// webhook server tls settings
 	// this is matching the default from the webhook server
 	certDir := filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
@@ -61,6 +69,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// initial configuration parsing
+	if err := configuration.EnsureFirstConfigurationLoad(
+		cmNamed, mgr.GetAPIReader(), cfg,
+		reconfilers.ConfigurationConfigMapKey); err != nil {
+		entryLog.Error(err, "unable to set up initial configuration")
+		os.Exit(1)
+	}
+
+	// setup reconcilers to keep configuration up-to-date
+	builder.
+		ControllerManagedBy(mgr).
+		For(&corev1.ConfigMap{}).
+		WithEventFilter(predicates.GetConfigPredicates(cmNamed)).
+		Complete(reconcilers.NewConfigurationReconciler(
+			log.WithName("configurationReconciler"),
+			cfg))
+
+	// setup all TLS and webhook configuration related stuff
 	if len(flags.webhookCertificate) > 0 {
 		needCert, err := utilstls.EnsureWeNeedCertificateByCertManager(certDir, certName, keyName)
 		if err != nil {
@@ -114,14 +140,11 @@ func main() {
 	}
 
 	entryLog.Info("registering webhooks to the webhook server")
-	if flags.enableMutatingWebhook {
-		// hookServer.Register(utilswebhook.MutatingPath, &webhook.Admission{Handler: &namespaceMutator{Client: mgr.GetClient()}})
-	}
 	if flags.enableValidatingWebhook {
-		entryLog.Info("setting up serviceValidator")
+		entryLog.Info("setting up genericValidator")
 		// hookServer.Register(utilswebhook.ValidatingPath, &webhook.Admission{Handler: &namespaceValidator{Client: mgr.GetClient()}})
 		hookServer.Register(utilswebhook.ValidatingPath, &webhook.Admission{
-			Handler: webhooks.NewServiceValidator(mgr.GetClient(), log.WithName("serviceValidator")),
+			Handler: webhooks.NewGenericValidator(mgr.GetClient(), log.WithName("genericValidator"), cfg),
 		})
 	}
 
