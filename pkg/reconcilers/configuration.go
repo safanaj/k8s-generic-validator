@@ -4,23 +4,32 @@ import (
 	"context"
 	"fmt"
 
+	"crypto/md5"
+	"sort"
+	"strings"
+
 	"github.com/go-logr/logr"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/safanaj/k8s-generic-validator/pkg/config"
+	"github.com/safanaj/k8s-generic-validator/pkg/utils/apiresources"
 )
 
 const ConfigurationConfigMapKey string = "config.yml"
 
 type configurationReconciler struct {
 	client.Client
-	log logr.Logger
-	cfg *config.Config
+	clientCfg *rest.Config
+	log       logr.Logger
+	cfg       *config.Config
+
+	kindsChecksum [md5.Size]byte
 }
 
 func NewConfigurationReconciler(log logr.Logger, cfg *config.Config) reconcile.Reconciler {
@@ -29,6 +38,11 @@ func NewConfigurationReconciler(log logr.Logger, cfg *config.Config) reconcile.R
 
 func (r *configurationReconciler) InjectClient(c client.Client) error {
 	r.Client = c
+	return nil
+}
+
+func (r *configurationReconciler) InjectConfig(cliCfg *rest.Config) error {
+	r.clientCfg = cliCfg
 	return nil
 }
 
@@ -61,6 +75,24 @@ func (r *configurationReconciler) Reconcile(request reconcile.Request) (reconcil
 
 	if err := r.cfg.ParseYaml([]byte(data)); err != nil {
 		return reconcile.Result{}, fmt.Errorf("ConfigMap is not well formatted: %+v", err)
+	}
+
+	// store kinds checksum and eventually update webhook configuration
+	oldsum := r.kindsChecksum
+	kinds := cfg.GetKinds()
+	sort.Strings(kinds)
+	kindsStr := strings.Join(kinds, "")
+	r.kindsChecksum = md5.Sum([]byte(kindsStr))
+	if oldsum[0] != 0 && oldsum != r.kindsChecksum {
+		// TODO: notify/update the webhook configuration
+		if supportedMap, err := apiresources.SupportedMap(r.clientCfg); err == nil {
+			// TODO: refresh rules in Webhook configuration (utilswebhook.EnsureWebhookConfigurations() ??)
+			_ := oldsum
+
+		} else {
+			// getting error, enable to refresh webhook configuration
+			return reconcile.Result{}, fmt.Errorf("Unable to fetch supported api-resources: %+v", err)
+		}
 	}
 
 	return reconcile.Result{}, nil

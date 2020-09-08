@@ -21,6 +21,7 @@ import (
 
 	"github.com/safanaj/k8s-generic-validator/pkg/config"
 	"github.com/safanaj/k8s-generic-validator/pkg/reconcilers"
+	"github.com/safanaj/k8s-generic-validator/pkg/utils/apiresources"
 	"github.com/safanaj/k8s-generic-validator/pkg/utils/configuration"
 	"github.com/safanaj/k8s-generic-validator/pkg/utils/predicates"
 	utilstls "github.com/safanaj/k8s-generic-validator/pkg/utils/tls"
@@ -38,6 +39,7 @@ func main() {
 	// we can just modify that to add certmanager apis to avoid to pass any additional
 	// options to the manager and/or client
 	scheme = kubernetesscheme.Scheme
+	clientCfg := crconfig.GetConfigOrDie()
 
 	// logf.SetLogger(zap.Logger(false))
 	logf.SetLogger(klogr.New())
@@ -57,7 +59,7 @@ func main() {
 
 	// Setup a Manager
 	entryLog.Info("setting up manager")
-	mgr, err := manager.New(crconfig.GetConfigOrDie(), manager.Options{CertDir: certDir})
+	mgr, err := manager.New(clientCfg, manager.Options{CertDir: certDir})
 	if err != nil {
 		entryLog.Error(err, "unable to set up overall controller manager")
 		os.Exit(1)
@@ -122,6 +124,12 @@ func main() {
 		}
 	}
 
+	supportedMap, err := apiresources.SupportedMap(clientCfg)
+	if err != nil {
+		entryLog.Error(err, "unable to discover supported api-resources")
+		os.Exit(1)
+	}
+
 	// Setup webhooks
 	entryLog.Info("setting up webhook server")
 	hookServer := mgr.GetWebhookServer()
@@ -131,7 +139,8 @@ func main() {
 		flags.serviceName, flags.webhookCertificate,
 		flags.validatingWebhookConfiguration, "",
 		flags.enableValidatingWebhook, false,
-		mgr.GetAPIReader(), mgr.GetClient()); err != nil {
+		mgr.GetAPIReader(), mgr.GetClient(),
+		cfg, supportedMap); err != nil {
 		entryLog.Error(err, "unable to ensure webhook configurations")
 		os.Exit(1)
 	}
