@@ -6,18 +6,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	kubernetesscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	_ "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	crconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"github.com/safanaj/k8s-generic-validator/pkg/config"
 	"github.com/safanaj/k8s-generic-validator/pkg/reconcilers"
 	"github.com/safanaj/k8s-generic-validator/pkg/utils/configuration"
 	"github.com/safanaj/k8s-generic-validator/pkg/utils/predicates"
@@ -47,14 +49,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	// setup configuration
-	cfg := config.NewConfig()
-	var cmNamed types.NamespacedName
-	{
-		cmParts := strings.Split(flags.configMap, "/")
-		cmNamed = types.NamespacedName{cmParts[0], cmParts[1]}
-	}
-
 	// webhook server tls settings
 	// this is matching the default from the webhook server
 	certDir := filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
@@ -63,16 +57,18 @@ func main() {
 
 	// Setup a Manager
 	entryLog.Info("setting up manager")
-	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{CertDir: certDir})
+	mgr, err := manager.New(crconfig.GetConfigOrDie(), manager.Options{CertDir: certDir})
 	if err != nil {
 		entryLog.Error(err, "unable to set up overall controller manager")
 		os.Exit(1)
 	}
 
+	// setup configuration
+	cfg := config.NewConfig()
 	// initial configuration parsing
 	if err := configuration.EnsureFirstConfigurationLoad(
-		cmNamed, mgr.GetAPIReader(), cfg,
-		reconfilers.ConfigurationConfigMapKey); err != nil {
+		flags.configMap, mgr.GetAPIReader(), cfg,
+		reconcilers.ConfigurationConfigMapKey); err != nil {
 		entryLog.Error(err, "unable to set up initial configuration")
 		os.Exit(1)
 	}
@@ -81,7 +77,8 @@ func main() {
 	builder.
 		ControllerManagedBy(mgr).
 		For(&corev1.ConfigMap{}).
-		WithEventFilter(predicates.GetConfigPredicates(cmNamed)).
+		WithEventFilter(predicates.GetConfigPredicates(
+			configuration.GetConfigurationNamespacedName())).
 		Complete(reconcilers.NewConfigurationReconciler(
 			log.WithName("configurationReconciler"),
 			cfg))

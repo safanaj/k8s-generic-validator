@@ -3,8 +3,6 @@ package config
 import (
 	"fmt"
 	"gopkg.in/yaml.v3"
-	"io/ioutil"
-	"strings"
 	"sync"
 )
 
@@ -23,9 +21,9 @@ type ForKindRules struct {
 
 type Config struct {
 	sync.RWMutex
-	cache         map[string]Rule // this map is using the Kind (and api version? (gvk)?) as key
-	ForKindsRules []ForKindRules  `yaml:"forKindsRules,omitempty"`
-	AdminGroups   []string        `yaml:"adminGroups,omitempty"`
+	cache         map[string][]Rule // this map is using the Kind (and api version? (gvk)?) as key
+	ForKindsRules []ForKindRules    `yaml:"forKindsRules,omitempty"`
+	AdminGroups   []string          `yaml:"adminGroups,omitempty"`
 }
 
 func NewConfig() *Config { return &Config{} }

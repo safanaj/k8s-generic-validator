@@ -8,6 +8,8 @@ import (
 type Flags struct {
 	version bool
 
+	configMap string
+
 	webhookCAIssuer                string
 	webhookCertificate             string
 	serviceName                    string
