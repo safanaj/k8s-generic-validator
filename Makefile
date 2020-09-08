@@ -1,4 +1,4 @@
-VERSION ?= 0.0.1
+VERSION ?= 0.0.2
 REGISTRY ?= registry2.swarm.devfactory.com/central
 FLAGS =
 ENVVAR = CGO_ENABLED=0
