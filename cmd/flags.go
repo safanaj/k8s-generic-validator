@@ -8,6 +8,8 @@ import (
 type Flags struct {
 	version bool
 
+	configMap string
+
 	webhookCAIssuer                string
 	webhookCertificate             string
 	serviceName                    string
@@ -22,6 +24,7 @@ type Flags struct {
 func parseFlags() *Flags {
 	flags := &Flags{}
 	flag.BoolVar(&flags.version, "version", false, "Print version and exit")
+	flag.StringVar(&flags.configMap, "config-map", "kube-system/k8s-generic-validator", "Namespaced ConfigMap to look for validator configuration")
 	flag.StringVar(&flags.webhookCAIssuer, "webhook-ca-issuer", "kube-system/central-root-ca-for-webhooks", "Namespaced cert-manager.io issuer to look for")
 	flag.StringVar(&flags.webhookCertificate, "webhook-certificate", "", "Namespaced cert-manager.io certificate to look for (or create) certificate/key pair")
 	flag.StringVar(&flags.serviceName, "service-name", "kube-system/k8s-generic-validator", "Namespaced Service Name")

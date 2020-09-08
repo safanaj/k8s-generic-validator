@@ -6,21 +6,23 @@ import (
 	"path/filepath"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	kubernetesscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/klogr"
-	_ "sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	_ "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	crconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"github.com/safanaj/k8s-generic-validator/pkg/config"
 	"github.com/safanaj/k8s-generic-validator/pkg/reconcilers"
-	_ "github.com/safanaj/k8s-generic-validator/pkg/utils/configuration"
-	_ "github.com/safanaj/k8s-generic-validator/pkg/utils/predicates"
+	"github.com/safanaj/k8s-generic-validator/pkg/utils/configuration"
+	"github.com/safanaj/k8s-generic-validator/pkg/utils/predicates"
 	utilstls "github.com/safanaj/k8s-generic-validator/pkg/utils/tls"
 	utilswebhook "github.com/safanaj/k8s-generic-validator/pkg/utils/webhook"
 	"github.com/safanaj/k8s-generic-validator/pkg/webhooks"
@@ -55,12 +57,33 @@ func main() {
 
 	// Setup a Manager
 	entryLog.Info("setting up manager")
-	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{CertDir: certDir})
+	mgr, err := manager.New(crconfig.GetConfigOrDie(), manager.Options{CertDir: certDir})
 	if err != nil {
 		entryLog.Error(err, "unable to set up overall controller manager")
 		os.Exit(1)
 	}
 
+	// setup configuration
+	cfg := config.NewConfig()
+	// initial configuration parsing
+	if err := configuration.EnsureFirstConfigurationLoad(
+		flags.configMap, mgr.GetAPIReader(), cfg,
+		reconcilers.ConfigurationConfigMapKey); err != nil {
+		entryLog.Error(err, "unable to set up initial configuration")
+		os.Exit(1)
+	}
+
+	// setup reconcilers to keep configuration up-to-date
+	builder.
+		ControllerManagedBy(mgr).
+		For(&corev1.ConfigMap{}).
+		WithEventFilter(predicates.GetConfigPredicates(
+			configuration.GetConfigurationNamespacedName())).
+		Complete(reconcilers.NewConfigurationReconciler(
+			log.WithName("configurationReconciler"),
+			cfg))
+
+	// setup all TLS and webhook configuration related stuff
 	if len(flags.webhookCertificate) > 0 {
 		needCert, err := utilstls.EnsureWeNeedCertificateByCertManager(certDir, certName, keyName)
 		if err != nil {
@@ -114,14 +137,11 @@ func main() {
 	}
 
 	entryLog.Info("registering webhooks to the webhook server")
-	if flags.enableMutatingWebhook {
-		// hookServer.Register(utilswebhook.MutatingPath, &webhook.Admission{Handler: &namespaceMutator{Client: mgr.GetClient()}})
-	}
 	if flags.enableValidatingWebhook {
-		entryLog.Info("setting up serviceValidator")
+		entryLog.Info("setting up genericValidator")
 		// hookServer.Register(utilswebhook.ValidatingPath, &webhook.Admission{Handler: &namespaceValidator{Client: mgr.GetClient()}})
 		hookServer.Register(utilswebhook.ValidatingPath, &webhook.Admission{
-			Handler: webhooks.NewServiceValidator(mgr.GetClient(), log.WithName("serviceValidator")),
+			Handler: webhooks.NewGenericValidator(mgr.GetClient(), log.WithName("genericValidator"), cfg),
 		})
 	}
 
