@@ -77,3 +77,13 @@ func (cfg *Config) GetAdminGroups() []string {
 	}
 	return groups
 }
+
+func (cfg *Config) GetKinds() []string {
+	cfg.Lock()
+	defer cfg.Unlock()
+	kinds := []string{}
+	for kind := range cfg.cache {
+		kinds = append(kinds, kind)
+	}
+	return kinds
+}

@@ -8,6 +8,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/safanaj/k8s-generic-validator/pkg/utils/apiresources"
 )
 
 const (
@@ -19,21 +21,29 @@ const (
 )
 
 // needs refactoring to build this at runtime based on configuration
-func getRules() []ar.RuleWithOperations {
-	scope := ar.NamespacedScope
-	return []ar.RuleWithOperations{
-		{
+func getRules(cfg *config.Config,
+	supportedMap apiresources.SupportedAPIResourcesMap) []ar.RuleWithOperations {
+	kinds := cfg.GetKinds()
+	res := make([]ar.RuleWithOperations, 0, len(kinds))
+	for _, kind := range kinds {
+		data, ok := supportedMap[kind]
+		if !ok {
+			continue
+		}
+
+		res = append(res, ar.RuleWithOperations{
 			Operations: []ar.OperationType{
 				ar.Create, ar.Update,
 			},
 			Rule: ar.Rule{
-				APIGroups:   []string{""},
-				APIVersions: []string{"v1"},
-				Resources:   []string{"services"},
-				Scope:       &scope,
+				APIGroups:   []string{data.Group},
+				APIVersions: []string{data.Version},
+				Resources:   []string{data.Resource},
+				Scope:       data.Scope,
 			},
-		},
+		})
 	}
+	return res
 }
 
 func getServiceNamespacedName(name string) types.NamespacedName {
@@ -44,7 +54,9 @@ func getServiceNamespacedName(name string) types.NamespacedName {
 func EnsureWebhookConfigurations(
 	serviceName, webhookCertificate, validating, mutating string,
 	enableValidating, enableMutating bool,
-	r client.Reader, c client.Client) error {
+	r client.Reader, c client.Client,
+	cfg *config.Config,
+	supportedMap apiresources.SupportedAPIResourcesMap) error {
 	svcNamed := getServiceNamespacedName(serviceName)
 	vPath := ValidatingPath
 	mPath := MutatingPath
@@ -75,7 +87,7 @@ func EnsureWebhookConfigurations(
 							Port:      &port_,
 						},
 					},
-					Rules:       getRules(),
+					Rules:       getRules(cfg, supportedMap),
 					MatchPolicy: &matchPolicy,
 					SideEffects: &sideEffects,
 				},
@@ -101,7 +113,7 @@ func EnsureWebhookConfigurations(
 						Port:      &port_,
 					},
 				},
-				Rules:       getRules(),
+				Rules:       getRules(cfg, supportedMap),
 				MatchPolicy: &matchPolicy,
 				SideEffects: &sideEffects,
 			},
@@ -135,7 +147,7 @@ func EnsureWebhookConfigurations(
 							Port:      &port_,
 						},
 					},
-					Rules:       getRules(),
+					Rules:       getRules(cfg, supportedMap),
 					MatchPolicy: &matchPolicy,
 					SideEffects: &sideEffects,
 				},
@@ -160,7 +172,7 @@ func EnsureWebhookConfigurations(
 						Port:      &port_,
 					},
 				},
-				Rules:       getRules(),
+				Rules:       getRules(cfg, supportedMap),
 				MatchPolicy: &matchPolicy,
 				SideEffects: &sideEffects,
 			},
