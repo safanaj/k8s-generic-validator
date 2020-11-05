@@ -79,7 +79,7 @@ func (r *configurationReconciler) Reconcile(request reconcile.Request) (reconcil
 
 	// store kinds checksum and eventually update webhook configuration
 	oldsum := r.kindsChecksum
-	kinds := cfg.GetKinds()
+	kinds := r.cfg.GetKinds()
 	sort.Strings(kinds)
 	kindsStr := strings.Join(kinds, "")
 	r.kindsChecksum = md5.Sum([]byte(kindsStr))
@@ -87,8 +87,8 @@ func (r *configurationReconciler) Reconcile(request reconcile.Request) (reconcil
 		// TODO: notify/update the webhook configuration
 		if supportedMap, err := apiresources.SupportedMap(r.clientCfg); err == nil {
 			// TODO: refresh rules in Webhook configuration (utilswebhook.EnsureWebhookConfigurations() ??)
-			_ := oldsum
-
+			_ = oldsum
+			_ = supportedMap
 		} else {
 			// getting error, enable to refresh webhook configuration
 			return reconcile.Result{}, fmt.Errorf("Unable to fetch supported api-resources: %+v", err)

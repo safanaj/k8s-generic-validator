@@ -4,6 +4,7 @@ import (
 	ar "k8s.io/api/admissionregistration/v1beta1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
+	"strings"
 )
 
 type GroupVersionResourceScope struct {
@@ -45,7 +46,7 @@ func SupportedMap(config *rest.Config) (SupportedAPIResourcesMap, error) {
 			}
 			scope := ar.ClusterScope
 			if r.Namespaced {
-				scope := ar.NamespacedScope
+				scope = ar.NamespacedScope
 			}
 			kindGVMap[r.Kind] = &GroupVersionResourceScope{g, v, r.Name, &scope}
 		}

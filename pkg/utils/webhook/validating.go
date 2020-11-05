@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/safanaj/k8s-generic-validator/pkg/config"
 	"github.com/safanaj/k8s-generic-validator/pkg/utils/apiresources"
 )
 

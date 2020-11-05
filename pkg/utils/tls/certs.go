@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	certmanagerapiv1alpha2 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 
 	"github.com/safanaj/k8s-generic-validator/pkg/utils/predicates"
@@ -55,7 +55,7 @@ func EnsureWeNeedCertificateByCertManager(certDir, certName, keyName string) (bo
 }
 
 func SetupScheme(scheme *runtime.Scheme) {
-	certmanagerapiv1alpha2.AddToScheme(scheme)
+	cmapi.AddToScheme(scheme)
 }
 
 func SetupCertificateByCertManager(
@@ -66,7 +66,7 @@ func SetupCertificateByCertManager(
 	certDir, certName, keyName string,
 ) error {
 	var err error
-	caIssuer := &certmanagerapiv1alpha2.Issuer{}
+	caIssuer := &cmapi.Issuer{}
 	if err := r.Get(context.TODO(), caIssuerNamed, caIssuer); err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func SetupCertificateByCertManager(
 
 	d, _ := time.ParseDuration("50000h")
 	rd, _ := time.ParseDuration("50h")
-	cert := &certmanagerapiv1alpha2.Certificate{}
+	cert := &cmapi.Certificate{}
 
 	opFn := func(ctx context.Context, obj runtime.Object) error { return c.Update(ctx, obj) }
 
@@ -95,22 +95,24 @@ func SetupCertificateByCertManager(
 
 	dnsShortName := strings.Join([]string{svcNamed.Name, svcNamed.Namespace, "svc"}, ".")
 	dnsFqdn := strings.Join([]string{dnsShortName, "cluster", "local"}, ".")
-	cert.Spec = certmanagerapiv1alpha2.CertificateSpec{
-		CommonName:   dnsShortName,
-		Organization: []string{},
-		DNSNames:     []string{dnsShortName, dnsFqdn},
-		Usages: []certmanagerapiv1alpha2.KeyUsage{
-			certmanagerapiv1alpha2.UsageDigitalSignature,
-			certmanagerapiv1alpha2.UsageKeyEncipherment,
-			certmanagerapiv1alpha2.UsageKeyAgreement,
-			certmanagerapiv1alpha2.UsageServerAuth,
-			certmanagerapiv1alpha2.UsageClientAuth,
+	cert.Spec = cmapi.CertificateSpec{
+		CommonName: dnsShortName,
+		DNSNames:   []string{dnsShortName, dnsFqdn},
+		Usages: []cmapi.KeyUsage{
+			cmapi.UsageDigitalSignature,
+			cmapi.UsageKeyEncipherment,
+			cmapi.UsageKeyAgreement,
+			cmapi.UsageServerAuth,
+			cmapi.UsageClientAuth,
 		},
 		Duration:    &metav1.Duration{d},
 		RenewBefore: &metav1.Duration{rd},
 		SecretName:  secretNamed.Name,
-		KeySize:     4096,
 		IssuerRef:   caIssuerRef,
+		PrivateKey: &cmapi.CertificatePrivateKey{
+			Algorithm: cmapi.RSAKeyAlgorithm,
+			Size:      4096,
+		},
 	}
 
 	err = opFn(context.TODO(), cert)
